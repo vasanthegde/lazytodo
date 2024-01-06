@@ -1,5 +1,5 @@
 # Another TODO app which noboady asked for!
-## So what is pitch ?
+## So what is the pitch ?
 1. Have you ever keep creating todo's and they keep filing up in some text editor ?
 2. Do you want TODO app to clean itself all old todos which are older than a month ?
 3. Do you want to list todos created in range of TODAY, WEEK, MONTH ?
