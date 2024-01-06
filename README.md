@@ -8,6 +8,22 @@
 Then this simple TODO CLI app for you.
 
 # Usage 
+```
+Usage: todo <COMMAND>
+
+Commands:
+  add
+  list
+  clear
+  done
+  pset
+  delete
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
 A gif is worth a thousand words, they say.
 ### add todos 
 ![add](https://github.com/vasanthegde/lazytodo/assets/12895102/814a5b1c-6714-437d-ba2f-d818ba1c0c2b)
