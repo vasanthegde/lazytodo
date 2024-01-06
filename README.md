@@ -1,4 +1,4 @@
-# Another TODO app which noboady asked for!
+# Another TODO app which nobody asked for!
 ## So what is the pitch ?
 1. Have you ever keep creating todo's and they keep filing up in some text editor ?
 2. Do you want TODO app to clean itself all old todos which are older than a month ?
