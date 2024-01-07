@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate prettytable;
 use colored::Colorize;
+use lazytodo::{Bucket, Commands, LazyTodo, Todo, TodoWrapper};
 use prettytable::Table;
 use std::{
     collections::HashMap,
@@ -10,9 +11,8 @@ use std::{
 };
 
 use chrono::{Duration, Local, NaiveDate};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::Parser;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 
 fn main() {
     let today = Local::now().date_naive();
@@ -48,68 +48,16 @@ fn main() {
         .retain(|x| x.created_at >= today.checked_sub_signed(Duration::days(30)).unwrap());
 
     if wrapper.todo.len() < total_todos {
-        println!("Cleared {} old todos", total_todos - wrapper.todo.len())
+        println!("Deleted {} old todos", total_todos - wrapper.todo.len())
     }
     let cli = LazyTodo::parse();
     match cli.command {
         Commands::Add { todo, priority } => {
-            wrapper.counter += 1;
-            wrapper.todo.push(Todo {
-                id: wrapper.counter,
-                content: todo,
-                priority: priority.unwrap_or_default(),
-                done: false,
-                created_at: today,
-            })
+            add_todo(&mut wrapper, todo, priority, today);
         }
 
         Commands::List { range } => {
-            let mut group: HashMap<&NaiveDate, Vec<&Todo>> = HashMap::new();
-            let ls: Vec<_> = wrapper
-                .todo
-                .iter()
-                .filter(|x| is_valid_bucket(x.created_at.clone(), range.unwrap_or(Bucket::ALL)))
-                .collect();
-
-            for todo in ls {
-                let entry = group.entry(&todo.created_at).or_insert(Vec::new());
-                entry.push(todo);
-            }
-
-            let mut table = Table::new();
-            table.add_row(row![
-                "ID".bold().cyan(),
-                "TODO_NAME".bold().cyan(),
-                "CREATED_AT".bold().cyan()
-            ]);
-
-            for todos_grouped in group.iter().sorted() {
-                for todo_item in todos_grouped.1 {
-                    let content = if todo_item.done && todo_item.priority {
-                        todo_item
-                            .content
-                            .to_uppercase()
-                            .strikethrough()
-                            .italic()
-                            .dimmed()
-                            .red()
-                    } else if todo_item.done {
-                        todo_item
-                            .content
-                            .to_uppercase()
-                            .strikethrough()
-                            .italic()
-                            .dimmed()
-                    } else if todo_item.priority {
-                        todo_item.content.to_uppercase().red()
-                    } else {
-                        todo_item.content.to_uppercase().normal()
-                    };
-                    table.add_row(row![todo_item.id, content, todo_item.created_at]);
-                }
-            }
-
-            table.printstd();
+            list_todos(&wrapper, range);
         }
 
         Commands::Done { id } => {
@@ -131,73 +79,82 @@ fn main() {
     write_todo_wrapper(wrapper, &todo_file_path)
 }
 
+fn list_todos(wrapper: &TodoWrapper, range: Option<Bucket>) {
+    let mut group: HashMap<&NaiveDate, Vec<&Todo>> = HashMap::new();
+    let ls: Vec<_> = wrapper
+        .todo
+        .iter()
+        .filter(|x| is_valid_bucket(x.created_at.clone(), range.unwrap_or(Bucket::ALL)))
+        .collect();
+
+    for todo in ls {
+        let entry = group.entry(&todo.created_at).or_insert(Vec::new());
+        entry.push(todo);
+    }
+
+    let table = create_table(group);
+    table.printstd();
+}
+
+fn create_table(group: HashMap<&NaiveDate, Vec<&Todo>>) -> Table {
+    let mut table = Table::new();
+    table.add_row(row![
+        "ID".bold().cyan(),
+        "TODO_NAME".bold().cyan(),
+        "CREATED_AT".bold().cyan()
+    ]);
+    for todos_grouped in group.iter().sorted() {
+        for todo_item in todos_grouped.1 {
+            let content = if todo_item.done && todo_item.priority {
+                todo_item
+                    .content
+                    .to_uppercase()
+                    .strikethrough()
+                    .italic()
+                    .dimmed()
+                    .red()
+            } else if todo_item.done {
+                todo_item
+                    .content
+                    .to_uppercase()
+                    .strikethrough()
+                    .italic()
+                    .dimmed()
+            } else if todo_item.priority {
+                todo_item.content.to_uppercase().red()
+            } else {
+                todo_item.content.to_uppercase().normal()
+            };
+            table.add_row(row![todo_item.id, content, todo_item.created_at]);
+        }
+    }
+    table
+}
+
+fn add_todo(wrapper: &mut TodoWrapper, todo: String, priority: Option<bool>, today: NaiveDate) {
+    wrapper.counter += 1;
+    wrapper.todo.push(Todo {
+        id: wrapper.counter,
+        content: todo,
+        priority: priority.unwrap_or_default(),
+        done: false,
+        created_at: today,
+    })
+}
+
 fn write_todo_wrapper(todo_wrapper: TodoWrapper, todo_file_path: &PathBuf) {
     let json_string = serde_json::to_string(&todo_wrapper).expect("Failed to deserialize to JSON");
     let mut file = File::create(todo_file_path).expect("Failed to create file");
     file.write_all(json_string.as_bytes())
         .expect("Failed to write to file");
 }
+
 fn is_valid_bucket(key: NaiveDate, bucket: Bucket) -> bool {
     let today = Local::now().naive_local().date();
-
     match bucket {
         Bucket::TODAY => return today == key,
         Bucket::WEEK => return key >= today.checked_sub_signed(Duration::days(7)).unwrap(),
         Bucket::MONTH => return key >= today.checked_sub_signed(Duration::days(30)).unwrap(),
         Bucket::ALL => return true,
     }
-}
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct LazyTodo {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    Add {
-        todo: String,
-        #[arg(short, long)]
-        priority: Option<bool>,
-    },
-    List {
-        range: Option<Bucket>,
-    },
-    Clear {
-        range: Bucket,
-    },
-    Done {
-        id: i32,
-    },
-    Pset {
-        id: i32,
-    },
-    Delete {
-        id: i32,
-    },
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum Bucket {
-    TODAY,
-    WEEK,
-    MONTH,
-    ALL,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct Todo {
-    id: i32,
-    content: String,
-    priority: bool,
-    done: bool,
-    created_at: NaiveDate,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct TodoWrapper {
-    todo: Vec<Todo>,
-    counter: i32,
 }
